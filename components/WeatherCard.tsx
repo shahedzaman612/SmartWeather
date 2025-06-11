@@ -23,7 +23,16 @@ export default function WeatherCard({ data }) {
           <Lottie animationData={animation} loop />
         </div>
       </div>
-
+<div className="grid grid-cols-2 gap-4 mt-6 text-sm text-blue-100">
+  <div className="text-center">
+    <p className="font-semibold">🌅 Sunrise</p>
+    <p>{new Date(data.sunrise).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+  </div>
+  <div className="text-center">
+    <p className="font-semibold">🌇 Sunset</p>
+    <p>{new Date(data.sunset).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+  </div>
+</div>
       <div className="grid grid-cols-3 gap-4 mt-6 text-sm text-blue-100">
         <div className="text-center">
           <p className="font-semibold">Humidity</p>
