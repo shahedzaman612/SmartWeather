@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "date-fns": "^4.1.0",
     "firebase": "^11.9.0",
     "lottie-react": "^2.4.1",
     "moment": "^2.30.1",

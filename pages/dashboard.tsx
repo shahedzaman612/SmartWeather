@@ -11,7 +11,13 @@ import PopularCities from "../components/PopularCities";
 import AirQualityCard from "../components/AirQualityCard";
 import AlertCard from "../components/AlertCard";
 
-import { saveLocation, getSavedLocations } from "../lib/firestore";
+import {
+  saveLocation,
+  getSavedLocations,
+  deleteLocation,
+} from "../lib/firestore";
+
+import { format } from "date-fns";
 
 type HourlyWeather = {
   dt: string;
@@ -51,24 +57,57 @@ type WeatherAlert = {
   end: number;
   description: string;
   tags: string[];
+  startFormatted?: string;
+  endFormatted?: string;
 };
 
 type SavedLocation = {
+  id?: string; // optional id if you want to delete
   name: string;
   lat: number;
   lon: number;
 };
 
+// Reverse geocoding to get city name from lat/lon
+async function getCityNameFromCoords(
+  lat: number,
+  lon: number
+): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
+    );
+    if (!res.ok) throw new Error("Failed to reverse geocode");
+    const data = await res.json();
+    return (
+      data.address?.city ||
+      data.address?.town ||
+      data.address?.village ||
+      data.address?.municipality ||
+      "Unknown Location"
+    );
+  } catch (e) {
+    console.error("Reverse geocode error:", e);
+    return "Unknown Location";
+  }
+}
+
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [forecast, setForecast] = useState<{ hourly: HourlyWeather[] } | null>(null);
+  const [forecast, setForecast] = useState<{ hourly: HourlyWeather[] } | null>(
+    null
+  );
   const [aqi, setAqi] = useState<AQIData | null>(null);
   const [alerts, setAlerts] = useState<WeatherAlert | null>(null);
   const [saved, setSaved] = useState<SavedLocation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // New loading state for saved locations (point 3)
+  const [savedLoading, setSavedLoading] = useState(true);
+
+  // Listen for Firebase auth changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (usr) => {
       if (usr) {
@@ -77,28 +116,31 @@ export default function Dashboard() {
         window.location.href = "/login";
       }
     });
-
     return () => unsubscribe();
   }, []);
 
+  // Load saved locations from Firestore for this user with loading UI
   useEffect(() => {
     if (user) {
+      setSavedLoading(true);
       getSavedLocations(user.uid)
         .then(setSaved)
         .catch((e) => {
           console.error("Error loading saved locations:", e);
-        });
+        })
+        .finally(() => setSavedLoading(false));
     }
   }, [user]);
 
-  // 🌍 Automatically use browser location on first load
+  // On first load, get user geolocation and reverse geocode city name
   useEffect(() => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        async (position) => {
           const { latitude, longitude } = position.coords;
+          const cityName = await getCityNameFromCoords(latitude, longitude);
           handleCitySelect({
-            name: "Your Location",
+            name: cityName,
             lat: latitude,
             lon: longitude,
           });
@@ -112,23 +154,35 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Load weather, forecast, AQI, and alerts for selected city
   const handleCitySelect = async ({ name, lat, lon }: SavedLocation) => {
     setLoading(true);
     setError(null);
+
+    // Offline check (point 4)
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setError("You are offline. Please check your internet connection.");
+      setLoading(false);
+      return;
+    }
+
     try {
+      // Fetch weather + forecast from Open-Meteo
       const res = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m,windspeed_10m,weathercode&daily=sunrise,sunset&timezone=auto`
       );
       if (!res.ok) throw new Error("Failed to fetch weather data");
       const data = await res.json();
 
-      const hourly: HourlyWeather[] = data.hourly.time.map((t: string, i: number) => ({
-        dt: t,
-        temp: data.hourly.temperature_2m[i],
-        humidity: data.hourly.relative_humidity_2m[i],
-        wind: data.hourly.windspeed_10m[i],
-        code: data.hourly.weathercode[i],
-      }));
+      const hourly: HourlyWeather[] = data.hourly.time.map(
+        (t: string, i: number) => ({
+          dt: t,
+          temp: data.hourly.temperature_2m[i],
+          humidity: data.hourly.relative_humidity_2m[i],
+          wind: data.hourly.windspeed_10m[i],
+          code: data.hourly.weathercode[i],
+        })
+      );
 
       setWeather({
         name,
@@ -144,7 +198,7 @@ export default function Dashboard() {
 
       setForecast({ hourly });
 
-      // 🌫️ AQI from OpenWeather
+      // Fetch air quality from OpenWeather API
       const airRes = await fetch(
         `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY}`
       );
@@ -153,7 +207,12 @@ export default function Dashboard() {
 
       setAqi({
         main: {
-          aqi: Math.min(Math.max(1, airData.list[0].main.aqi), 5) as 1 | 2 | 3 | 4 | 5,
+          aqi: Math.min(Math.max(1, airData.list[0].main.aqi), 5) as
+            | 1
+            | 2
+            | 3
+            | 4
+            | 5,
         },
         components: {
           pm2_5: airData.list[0].components.pm2_5,
@@ -162,7 +221,7 @@ export default function Dashboard() {
         },
       });
 
-      // ⚠️ Alerts from proxy API
+      // Fetch weather alerts from your API route (/api/alert)
       const alertRes = await fetch(`/api/alert?lat=${lat}&lon=${lon}`);
       if (!alertRes.ok) {
         const text = await alertRes.text();
@@ -180,6 +239,8 @@ export default function Dashboard() {
           end: alert.end,
           description: alert.description || "",
           tags: alert.tags || [],
+          startFormatted: format(new Date(alert.start * 1000), "PPpp"),
+          endFormatted: format(new Date(alert.end * 1000), "PPpp"),
         });
       } else {
         setAlerts(null);
@@ -199,7 +260,9 @@ export default function Dashboard() {
   return (
     <Layout>
       <div>
-        <h2 className="text-2xl font-semibold mb-4 text-white">Search Weather</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-white">
+          Search Weather
+        </h2>
         <PlaceSearch onSelect={handleCitySelect} />
 
         {loading && <p className="text-white mt-4">Loading data...</p>}
@@ -208,6 +271,57 @@ export default function Dashboard() {
         {weather && !loading && !error && (
           <div className="mt-6 space-y-8">
             <WeatherCard data={weather} />
+
+            <button
+              className="
+    px-5 py-3
+    bg-gradient-to-r from-purple-500 via-pink-500 to-red-500
+    text-white font-semibold
+    rounded-lg
+    shadow-lg
+    hover:shadow-2xl
+    transition
+    duration-300
+    ease-in-out
+    flex items-center space-x-2
+  "
+              onClick={async () => {
+                if (!user) return;
+                const alreadySaved = saved.some(
+                  (loc) => loc.lat === weather.lat && loc.lon === weather.lon
+                );
+                if (alreadySaved) return;
+
+                try {
+                  await saveLocation(user.uid, {
+                    name: weather.name,
+                    lat: weather.lat,
+                    lon: weather.lon,
+                  });
+                  const updated = await getSavedLocations(user.uid);
+                  setSaved(updated);
+                } catch (e) {
+                  console.error("Error saving location:", e);
+                }
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+              <span>Save Location</span>
+            </button>
+
             {aqi && <AirQualityCard aqi={aqi} />}
             {alerts && <AlertCard alert={alerts} />}
             {forecast?.hourly && (
@@ -221,47 +335,57 @@ export default function Dashboard() {
                 />
               </>
             )}
-            {user && (
-              <button
-                onClick={async () => {
-                  try {
-                    await saveLocation(user.uid, {
-                      name: weather.name,
-                      lat: weather.lat,
-                      lon: weather.lon,
-                    });
-                    const updated = await getSavedLocations(user.uid);
-                    setSaved(updated);
-                  } catch (e) {
-                    console.error("Error saving location:", e);
-                  }
-                }}
-                className="bg-green-500 text-white px-4 py-2 rounded shadow hover:bg-green-600 transition"
-              >
-                💾 Save Location
-              </button>
-            )}
           </div>
         )}
+
+        <section className="mt-10">
+          <h3 className="text-xl font-semibold text-white mb-2">
+            Saved Locations
+          </h3>
+          {savedLoading ? (
+            <p className="text-white">Loading saved locations...</p>
+          ) : saved.length === 0 ? (
+            <p className="text-white">No saved locations yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {saved.map((loc) => (
+                <li
+                  key={loc.id ?? `${loc.name}-${loc.lat}-${loc.lon}`}
+                  className="flex items-center justify-between"
+                >
+                  <button
+                    className="text-white underline"
+                    onClick={() => handleCitySelect(loc)}
+                  >
+                    {loc.name}
+                  </button>
+
+                  {loc.id && (
+                    <button
+                      className="ml-4 text-red-500 font-bold hover:text-red-700 transition"
+                      onClick={async () => {
+                        if (!user) return;
+                        try {
+                          await deleteLocation(user.uid, loc.id!);
+                          setSaved((prev) =>
+                            prev.filter((l) => l.id !== loc.id)
+                          );
+                        } catch (e) {
+                          console.error("Failed to delete location", e);
+                        }
+                      }}
+                      aria-label={`Delete saved location ${loc.name}`}
+                    >
+                      ×
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <PopularCities onSelect={handleCitySelect} />
-
-        {user && saved.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-lg font-semibold text-white mb-2">📌 Your Locations</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {saved.map((loc, i) => (
-                <button
-                  key={`${loc.name}-${i}`}
-                  onClick={() => handleCitySelect(loc)}
-                  className="bg-white/10 text-white py-2 px-4 rounded hover:bg-white/20 transition"
-                >
-                  {loc.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </Layout>
   );

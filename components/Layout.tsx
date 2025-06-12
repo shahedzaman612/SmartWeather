@@ -36,7 +36,7 @@ export default function Layout({ children }: LayoutProps) {
       <main className="max-w-3xl mx-auto p-6">{children}</main>
 
       <footer className="text-center text-xs text-gray-500 py-6">
-        © {new Date().getFullYear()} SmartWeather — All rights reserved.
+        © {new Date().getFullYear()} SmartWeather — All rights reserved By Shahed.
       </footer>
     </div>
   );
