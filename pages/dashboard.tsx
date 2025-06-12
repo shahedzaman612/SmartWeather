@@ -34,8 +34,14 @@ type WeatherData = {
 };
 
 type AQIData = {
-  main: { aqi: 1 | 2 | 3 | 4 | 5 };
-  components: { pm2_5: number; pm10: number; [key: string]: number };
+  main: {
+    aqi: 1 | 2 | 3 | 4 | 5;
+  };
+  components: {
+    pm2_5: number;
+    pm10: number;
+    [key: string]: number;
+  };
 };
 
 type WeatherAlert = {
@@ -60,24 +66,51 @@ export default function Dashboard() {
   const [aqi, setAqi] = useState<AQIData | null>(null);
   const [alerts, setAlerts] = useState<WeatherAlert | null>(null);
   const [saved, setSaved] = useState<SavedLocation[]>([]);
-
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (usr) => {
-      if (usr) setUser(usr);
-      else window.location.href = "/login";
+      if (usr) {
+        setUser(usr);
+      } else {
+        window.location.href = "/login";
+      }
     });
+
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (user) {
-      getSavedLocations(user.uid).then(setSaved).catch(console.error);
+      getSavedLocations(user.uid)
+        .then(setSaved)
+        .catch((e) => {
+          console.error("Error loading saved locations:", e);
+        });
     }
   }, [user]);
+
+  // 🌍 Automatically use browser location on first load
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          handleCitySelect({
+            name: "Your Location",
+            lat: latitude,
+            lon: longitude,
+          });
+        },
+        (error) => {
+          console.warn("Geolocation error:", error.message);
+        }
+      );
+    } else {
+      console.warn("Geolocation not supported by this browser.");
+    }
+  }, []);
 
   const handleCitySelect = async ({ name, lat, lon }: SavedLocation) => {
     setLoading(true);
@@ -111,57 +144,55 @@ export default function Dashboard() {
 
       setForecast({ hourly });
 
+      // 🌫️ AQI from OpenWeather
       const airRes = await fetch(
         `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY}`
       );
       if (!airRes.ok) throw new Error("Failed to fetch air quality data");
       const airData = await airRes.json();
-      const comp = airData.list[0].components;
 
       setAqi({
-        main: { aqi: Math.min(Math.max(1, airData.list[0].main.aqi), 5) as 1 | 2 | 3 | 4 | 5 },
-        components: { pm2_5: comp.pm2_5, pm10: comp.pm10, ...comp },
+        main: {
+          aqi: Math.min(Math.max(1, airData.list[0].main.aqi), 5) as 1 | 2 | 3 | 4 | 5,
+        },
+        components: {
+          pm2_5: airData.list[0].components.pm2_5,
+          pm10: airData.list[0].components.pm10,
+          ...airData.list[0].components,
+        },
       });
 
+      // ⚠️ Alerts from proxy API
       const alertRes = await fetch(`/api/alert?lat=${lat}&lon=${lon}`);
+      if (!alertRes.ok) {
+        const text = await alertRes.text();
+        throw new Error(
+          `Failed to fetch alert data: ${alertRes.status} ${alertRes.statusText} - ${text}`
+        );
+      }
       const alertData = await alertRes.json();
-      const alert = alertData.data?.[0];
-
-      setAlerts(
-        alert
-          ? {
-              sender_name: alert.source || "Tomorrow.io",
-              event: alert.name || "Weather Alert",
-              start: new Date(alert.onsetTime).getTime() / 1000,
-              end: new Date(alert.endTime).getTime() / 1000,
-              description: alert.description || "",
-              tags: alert.severity ? [alert.severity] : [],
-            }
-          : null
-      );
+      const alert = alertData.alerts?.[0];
+      if (alert) {
+        setAlerts({
+          sender_name: alert.sender_name || "Unknown",
+          event: alert.event || "No event",
+          start: alert.start,
+          end: alert.end,
+          description: alert.description || "",
+          tags: alert.tags || [],
+        });
+      } else {
+        setAlerts(null);
+      }
     } catch (err: unknown) {
-      console.error("Error fetching data:", err);
-      setError(err instanceof Error ? err.message : "An unexpected error occurred.");
+      console.error("Error fetching forecast, AQI or alerts:", err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("An unexpected error occurred.");
+      }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSaveLocation = async () => {
-    if (!user || !weather) return;
-    setSaving(true);
-    try {
-      await saveLocation(user.uid, {
-        name: weather.name,
-        lat: weather.lat,
-        lon: weather.lon,
-      });
-      const updated = await getSavedLocations(user.uid);
-      setSaved(updated);
-    } catch (e) {
-      console.error("Error saving location:", e);
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -190,16 +221,24 @@ export default function Dashboard() {
                 />
               </>
             )}
-
             {user && (
               <button
-                onClick={handleSaveLocation}
-                disabled={saving}
-                className={`${
-                  saving ? "bg-green-300" : "bg-green-500 hover:bg-green-600"
-                } text-white px-4 py-2 rounded shadow transition`}
+                onClick={async () => {
+                  try {
+                    await saveLocation(user.uid, {
+                      name: weather.name,
+                      lat: weather.lat,
+                      lon: weather.lon,
+                    });
+                    const updated = await getSavedLocations(user.uid);
+                    setSaved(updated);
+                  } catch (e) {
+                    console.error("Error saving location:", e);
+                  }
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded shadow hover:bg-green-600 transition"
               >
-                💾 {saving ? "Saving..." : "Save Location"}
+                💾 Save Location
               </button>
             )}
           </div>
