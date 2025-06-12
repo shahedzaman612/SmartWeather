@@ -9,6 +9,7 @@ import HourlyForecast from "../components/HourlyForecast";
 import TemperatureChart from "../components/TemperatureChart";
 import PopularCities from "../components/PopularCities";
 import AirQualityCard from "../components/AirQualityCard";
+import AlertCard from "../components/AlertCard";
 
 import { saveLocation, getSavedLocations } from "../lib/firestore";
 
@@ -17,6 +18,7 @@ export default function Dashboard() {
   const [weather, setWeather] = useState(null);
   const [forecast, setForecast] = useState(null);
   const [aqi, setAqi] = useState(null);
+  const [alerts, setAlerts] = useState(null);
   const [saved, setSaved] = useState([]);
 
   useEffect(() => {
@@ -69,21 +71,30 @@ export default function Dashboard() {
       );
       const airData = await airRes.json();
       setAqi(airData.list[0]);
+
+      const alertRes = await fetch(
+        `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&appid=${process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY}`
+      );
+      const alertData = await alertRes.json();
+      setAlerts(alertData.alerts?.[0] || null);
     } catch (err) {
-      console.error("Error fetching forecast or AQI:", err);
+      console.error("Error fetching forecast, AQI or alerts:", err);
     }
   };
 
   return (
     <Layout>
       <div>
-        <h2 className="text-2xl font-semibold mb-4 text-white">Search Weather</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-white">
+          Search Weather
+        </h2>
         <PlaceSearch onSelect={handleCitySelect} />
 
         {weather && (
           <div className="mt-6 space-y-8">
             <WeatherCard data={weather} />
             {aqi && <AirQualityCard aqi={aqi} />}
+            {alerts && <AlertCard alert={alerts} />}
             {forecast?.hourly && (
               <>
                 <HourlyForecast hourly={forecast.hourly} />
@@ -113,7 +124,9 @@ export default function Dashboard() {
 
         {user && saved.length > 0 && (
           <div className="mt-6">
-            <h3 className="text-lg font-semibold text-white mb-2">📌 Your Locations</h3>
+            <h3 className="text-lg font-semibold text-white mb-2">
+              📌 Your Locations
+            </h3>
             <div className="grid grid-cols-2 gap-2">
               {saved.map((loc, i) => (
                 <button
