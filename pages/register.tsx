@@ -1,8 +1,8 @@
-
-import { useState } from "react";
+import { useState, FormEvent } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useRouter } from "next/router";
+import Link from "next/link";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -10,13 +10,13 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const router = useRouter();
 
-  const handleRegister = async (e: any) => {
+  const handleRegister = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     try {
       await createUserWithEmailAndPassword(auth, email, pass);
       router.push("/dashboard");
-    } catch (err) {
-      setError("Registration failed. Try again.");
+    } catch {
+      setError("Something went wrong. Try again.");
     }
   };
 
@@ -27,7 +27,9 @@ export default function RegisterPage() {
           Create an Account
         </h1>
 
-        {error && <p className="text-red-500 text-sm text-center mb-4">{error}</p>}
+        {error && (
+          <p className="text-red-500 text-sm text-center mb-4">{error}</p>
+        )}
 
         <form onSubmit={handleRegister} className="space-y-4">
           <input
@@ -57,9 +59,9 @@ export default function RegisterPage() {
 
         <p className="text-sm text-center text-gray-600 mt-4">
           Already have an account?{" "}
-          <a href="/login" className="text-blue-600 hover:underline">
+          <Link href="/login" className="text-blue-600 hover:underline">
             Login
-          </a>
+          </Link>
         </p>
       </div>
     </div>

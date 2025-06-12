@@ -1,6 +1,14 @@
+// components/HourlyForecast.tsx
 import moment from "moment";
 
-export default function HourlyForecast({ hourly }) {
+type HourData = {
+  dt: string;
+  temp: number;
+  humidity: number;
+  wind: number;
+};
+
+export default function HourlyForecast({ hourly }: { hourly: HourData[] }) {
   return (
     <div>
       <h3 className="text-lg font-semibold text-white mb-2">Next 12 Hours</h3>

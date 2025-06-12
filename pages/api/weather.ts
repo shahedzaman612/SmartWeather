@@ -1,6 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   const { lat, lon } = req.query;
 
   if (!lat || !lon) {
@@ -16,7 +19,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(data.cod).json({ error: data.message });
     }
     res.status(200).json(data);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch weather data" });
   }
 }

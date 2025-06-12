@@ -1,8 +1,13 @@
+import { ReactNode } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useRouter } from "next/router";
 
-export default function Layout({ children }) {
+type LayoutProps = {
+  children: ReactNode;
+};
+
+export default function Layout({ children }: LayoutProps) {
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -15,12 +20,17 @@ export default function Layout({ children }) {
       <header className="bg-white shadow-sm py-4 px-6 flex justify-between items-center">
         <h1 className="text-xl font-bold text-blue-600">🌤️ SmartWeather</h1>
 
-        <button
-          onClick={handleLogout}
-          className="text-sm bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition"
-        >
-          Logout
-        </button>
+        <div className="flex items-center gap-4">
+          {/* Optional ThemeToggle component, if you’ve implemented it */}
+          {/* <ThemeToggle /> */}
+
+          <button
+            onClick={handleLogout}
+            className="text-sm bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition"
+          >
+            Logout
+          </button>
+        </div>
       </header>
 
       <main className="max-w-3xl mx-auto p-6">{children}</main>

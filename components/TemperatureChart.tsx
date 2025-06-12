@@ -8,9 +8,18 @@ import {
 } from "recharts";
 import moment from "moment";
 
-export default function TemperatureChart({ hourly = [] }) {
+type HourlyData = {
+  dt: number;    // UNIX timestamp (seconds)
+  temp: number;
+};
+
+interface TemperatureChartProps {
+  hourly: HourlyData[];
+}
+
+export default function TemperatureChart({ hourly = [] }: TemperatureChartProps) {
   const chartData = hourly.slice(0, 12).map((hour) => ({
-    time: moment(hour.dt).format("hA"),
+    time: moment(hour.dt * 1000).format("hA"),  // multiply by 1000 for JS timestamp
     temp: Math.round(hour.temp),
   }));
 
