@@ -1,4 +1,4 @@
-// pages/index.tsx
+
 import { useEffect } from "react";
 import { useRouter } from "next/router";
 import { onAuthStateChanged } from "firebase/auth";

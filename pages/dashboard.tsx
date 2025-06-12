@@ -62,13 +62,12 @@ type WeatherAlert = {
 };
 
 type SavedLocation = {
-  id?: string; // optional id if you want to delete
+  id?: string;
   name: string;
   lat: number;
   lon: number;
 };
 
-// Reverse geocoding to get city name from lat/lon
 async function getCityNameFromCoords(
   lat: number,
   lon: number
@@ -104,10 +103,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // New loading state for saved locations (point 3)
   const [savedLoading, setSavedLoading] = useState(true);
 
-  // Listen for Firebase auth changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (usr) => {
       if (usr) {
@@ -119,7 +116,6 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
-  // Load saved locations from Firestore for this user with loading UI
   useEffect(() => {
     if (user) {
       setSavedLoading(true);
@@ -132,7 +128,6 @@ export default function Dashboard() {
     }
   }, [user]);
 
-  // On first load, get user geolocation and reverse geocode city name
   useEffect(() => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -154,12 +149,10 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Load weather, forecast, AQI, and alerts for selected city
   const handleCitySelect = async ({ name, lat, lon }: SavedLocation) => {
     setLoading(true);
     setError(null);
 
-    // Offline check (point 4)
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       setError("You are offline. Please check your internet connection.");
       setLoading(false);
@@ -221,7 +214,6 @@ export default function Dashboard() {
         },
       });
 
-      // Fetch weather alerts from your API route (/api/alert)
       const alertRes = await fetch(`/api/alert?lat=${lat}&lon=${lon}`);
       if (!alertRes.ok) {
         const text = await alertRes.text();

@@ -1,4 +1,3 @@
-// components/HourlyForecast.tsx
 import moment from "moment";
 
 type HourData = {
