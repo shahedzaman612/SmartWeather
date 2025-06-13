@@ -1,6 +1,11 @@
-import Lottie from "lottie-react";
-import { getWeatherAnimation } from "../lib/weatherAnimations";
+import Lottie, { LottieComponentProps } from "lottie-react";
+import {
+  getWeatherAnimation,
+  getWeatherDescription,
+} from "../lib/weatherAnimations";
+// The animation and description are now passed via props from Dashboard
 
+// Update the WeatherData type to include animation and description
 type WeatherData = {
   name?: string;
   temp?: number;
@@ -9,6 +14,8 @@ type WeatherData = {
   code?: string | number;
   sunrise?: string | number;
   sunset?: string | number;
+  animation?: LottieComponentProps; // Add animation data here
+  description?: string; // Add description here
 };
 
 interface WeatherCardProps {
@@ -21,11 +28,11 @@ export default function WeatherCard({ data }: WeatherCardProps) {
   const humidity = data.humidity ?? "–";
   const wind = data.wind ?? "–";
 
-  // Convert code to number safely, fallback to 0
+  // Removed: local call to getWeatherAnimation as it's now passed via data
   const codeNumber =
     typeof data.code === "string" ? parseInt(data.code, 10) : data.code ?? 0;
-
   const animation = getWeatherAnimation(codeNumber);
+  const description = getWeatherDescription(codeNumber);
 
   return (
     <div className="bg-gradient-to-b from-blue-500 to-blue-700 text-white rounded-2xl shadow-lg p-6 w-full max-w-md mx-auto">
@@ -41,6 +48,9 @@ export default function WeatherCard({ data }: WeatherCardProps) {
           <Lottie animationData={animation} loop />
         </div>
       </div>
+
+      {/* Display the weather description */}
+      <h2 className="text-xl font-medium text-center mt-2">{description}</h2>
 
       <div className="grid grid-cols-2 gap-4 mt-6 text-sm text-blue-100">
         <div className="text-center">

@@ -20,7 +20,7 @@ export default function Home() {
       <h1 className="text-4xl font-bold text-blue-700 mb-4">🌤️ SmartWeather</h1>
       <p className="text-lg text-gray-700 max-w-md mb-6">
         Get real-time weather updates for any city in the world.
-        Powered by OpenWeather & OpenStreetMap — no signup required.
+        Powered by Shahed.
       </p>
       <Link
         href="/login"
