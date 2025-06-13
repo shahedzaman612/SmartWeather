@@ -10,6 +10,7 @@ import TemperatureChart from "../components/TemperatureChart";
 import PopularCities from "../components/PopularCities";
 import AirQualityCard from "../components/AirQualityCard";
 import AlertCard from "../components/AlertCard";
+import SevenDayForecast from "../components/SevenDayForecast";
 
 import {
   saveLocation,
@@ -67,6 +68,14 @@ type SavedLocation = {
   lat: number;
   lon: number;
 };
+type DailyForecast = {
+  time: string[];
+  precipitation_probability_max: number[];
+  weathercode: number[];
+  temperature_2m_max: number[];
+  temperature_2m_min: number[];
+};
+
 
 async function getCityNameFromCoords(
   lat: number,
@@ -148,6 +157,8 @@ export default function Dashboard() {
       console.warn("Geolocation not supported by this browser.");
     }
   }, []);
+ const [daily, setDaily] = useState<DailyForecast | null>(null);
+
 
   const handleCitySelect = async ({ name, lat, lon }: SavedLocation) => {
     setLoading(true);
@@ -162,8 +173,9 @@ export default function Dashboard() {
     try {
       // Fetch weather + forecast from Open-Meteo
       const res = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m,windspeed_10m,weathercode&daily=sunrise,sunset&timezone=auto`
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m,windspeed_10m,weathercode&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,weathercode&timezone=auto`
       );
+
       if (!res.ok) throw new Error("Failed to fetch weather data");
       const data = await res.json();
 
@@ -190,6 +202,7 @@ export default function Dashboard() {
       });
 
       setForecast({ hourly });
+      setDaily(data.daily);
 
       // Fetch air quality from OpenWeather API
       const airRes = await fetch(
@@ -319,6 +332,8 @@ export default function Dashboard() {
             {forecast?.hourly && (
               <>
                 <HourlyForecast hourly={forecast.hourly} />
+                {daily && <SevenDayForecast daily={daily} />}
+
                 <TemperatureChart
                   hourly={forecast.hourly.map((h) => ({
                     ...h,
