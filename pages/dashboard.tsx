@@ -52,14 +52,9 @@ type AQIData = {
 };
 
 type WeatherAlert = {
-  sender_name: string;
-  event: string;
-  start: number;
-  end: number;
-  description: string;
-  tags: string[];
-  startFormatted?: string;
-  endFormatted?: string;
+  alert: string | null;
+  message: string;
+  code: number;
 };
 
 type SavedLocation = {
@@ -75,7 +70,6 @@ type DailyForecast = {
   temperature_2m_max: number[];
   temperature_2m_min: number[];
 };
-
 
 async function getCityNameFromCoords(
   lat: number,
@@ -157,8 +151,7 @@ export default function Dashboard() {
       console.warn("Geolocation not supported by this browser.");
     }
   }, []);
- const [daily, setDaily] = useState<DailyForecast | null>(null);
-
+  const [daily, setDaily] = useState<DailyForecast | null>(null);
 
   const handleCitySelect = async ({ name, lat, lon }: SavedLocation) => {
     setLoading(true);
@@ -235,18 +228,9 @@ export default function Dashboard() {
         );
       }
       const alertData = await alertRes.json();
-      const alert = alertData.alerts?.[0];
-      if (alert) {
-        setAlerts({
-          sender_name: alert.sender_name || "Unknown",
-          event: alert.event || "No event",
-          start: alert.start,
-          end: alert.end,
-          description: alert.description || "",
-          tags: alert.tags || [],
-          startFormatted: format(new Date(alert.start * 1000), "PPpp"),
-          endFormatted: format(new Date(alert.end * 1000), "PPpp"),
-        });
+
+      if (alertData && alertData.alert) {
+        setAlerts(alertData); // directly matches updated WeatherAlert type
       } else {
         setAlerts(null);
       }
@@ -326,9 +310,9 @@ export default function Dashboard() {
               </svg>
               <span>Save Location</span>
             </button>
-
-            {aqi && <AirQualityCard aqi={aqi} />}
             {alerts && <AlertCard alert={alerts} />}
+            {aqi && <AirQualityCard aqi={aqi} />}
+
             {forecast?.hourly && (
               <>
                 <HourlyForecast hourly={forecast.hourly} />
