@@ -29,45 +29,53 @@ function getWeatherIcon(code: number | undefined): string {
 
 export default function SevenDayForecast({ daily }: Props) {
   return (
-    <div className="bg-gradient-to-br from-purple-600 to-indigo-700 p-4 rounded-2xl text-white shadow-lg w-full max-w-md mx-auto">
-      <ul className="space-y-2 text-sm font-medium">
+    <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-black p-8 rounded-xl text-white shadow-3xl w-full max-w-md mx-auto relative overflow-hidden transform perspective-1000">
+    
+      <div className="absolute inset-0 bg-dots opacity-10 animate-pulse-slow"></div>
+
+      <h2 className="text-3xl font-extrabold mb-8 text-center text- bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 tracking-wider uppercase drop-shadow-lg">
+        Daily Forecast
+      </h2>
+
+      <div className="space-y-6">
         {daily.time.map((date, i) => (
-          <li
+          <div
             key={i}
-            className="grid grid-cols-4 items-center py-2 border-b border-white/10 text-sm"
+            className="grid grid-cols-4 items-center py-5 border border-white/10 rounded-lg backdrop-filter backdrop-blur-lg bg-white/5 hover:bg-white/10 transition-all duration-300 ease-in-out transform hover:scale-[1.02] animate-slide-in"
+            style={{ animationDelay: `${i * 0.08}s` }}
           >
             {/* Day */}
-            <div className="capitalize">
+            <div className="capitalize text-lg font-bold text-cyan-300 pl-4 tracking-wide">
               {i === 0
                 ? "Yesterday"
                 : i === 1
                 ? "Today"
-                : moment(date).subtract(1, "day").local().format("ddd")}
+                : moment(date).subtract(1, "day").format("ddd")}
             </div>
 
             {/* Precipitation */}
-            <div className="flex items-center gap-1 justify-center">
-              <span>💧</span>
-              <span className="tabular-nums">
+            <div className="flex items-center gap-2 justify-center">
+              <span className="text-3xl text-blue-300 drop-shadow-md">☔</span>
+              <span className="tabular-nums text-xl font-semibold text-white">
                 {daily.precipitation_probability_max?.[i] ?? "--"}%
               </span>
             </div>
 
             {/* Weather Icon */}
-            <div className="flex justify-center">
+            <div className="flex justify-center text-4xl transform hover:rotate-6 transition-transform duration-200">
               {getWeatherIcon(daily.weathercode?.[i])}
             </div>
 
             {/* Temperatures */}
-            <div className="text-right tabular-nums">
-              {Math.round(daily.temperature_2m_max[i])}°{" "}
-              <span className="text-white/60">
+            <div className="text-right tabular-nums text-2xl font-extrabold text-purple-300 pr-4">
+              {Math.round(daily.temperature_2m_max[i])}°
+              <span className="text-white/50 ml-3 font-medium">
                 {Math.round(daily.temperature_2m_min[i])}°
               </span>
             </div>
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }

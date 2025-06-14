@@ -18,7 +18,6 @@ import {
   deleteLocation,
 } from "../lib/firestore";
 
-import { format } from "date-fns";
 
 type HourlyWeather = {
   dt: string;

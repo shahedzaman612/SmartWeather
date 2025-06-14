@@ -13,3 +13,8 @@ input,
 button {
   outline: none;
 }
+/* In your CSS file (e.g., globals.css) */
+.bg-dots {
+  background-image: radial-gradient(#ffffff20 1px, transparent 1px);
+  background-size: 20px 20px; /* Adjust dot spacing */
+}
