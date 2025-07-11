@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { auth } from "../lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
 
@@ -72,10 +72,7 @@ type DailyForecast = {
   temperature_2m_min: number[];
 };
 
-async function getCityNameFromCoords(
-  lat: number,
-  lon: number
-): Promise<string> {
+async function getCityNameFromCoords(lat: number, lon: number): Promise<string> {
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
@@ -98,9 +95,7 @@ async function getCityNameFromCoords(
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [forecast, setForecast] = useState<{ hourly: HourlyWeather[] } | null>(
-    null
-  );
+  const [forecast, setForecast] = useState<{ hourly: HourlyWeather[] } | null>(null);
   const [aqi, setAqi] = useState<AQIData | null>(null);
   const [alerts, setAlerts] = useState<WeatherAlert | null>(null);
   const [saved, setSaved] = useState<SavedLocation[]>([]);
@@ -110,7 +105,6 @@ export default function Dashboard() {
   const [savedLoading, setSavedLoading] = useState(true);
   const [daily, setDaily] = useState<DailyForecast | null>(null);
 
-  // Auth listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (usr) => {
       if (usr) {
@@ -122,7 +116,6 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
-  // Load saved locations
   useEffect(() => {
     if (user) {
       setSavedLoading(true);
@@ -135,30 +128,7 @@ export default function Dashboard() {
     }
   }, [user]);
 
-  // Get current location on mount
-  useEffect(() => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          const cityName = await getCityNameFromCoords(latitude, longitude);
-          handleCitySelect({
-            name: cityName,
-            lat: latitude,
-            lon: longitude,
-          });
-        },
-        (error) => {
-          console.warn("Geolocation error:", error.message);
-        }
-      );
-    } else {
-      console.warn("Geolocation not supported by this browser.");
-    }
-  }, []);
-
-  // Handle city/location selection
-  const handleCitySelect = async ({ name, lat, lon }: SavedLocation) => {
+  const handleCitySelect = useCallback(async ({ name, lat, lon }: SavedLocation) => {
     setLoading(true);
     setError(null);
 
@@ -169,7 +139,6 @@ export default function Dashboard() {
     }
 
     try {
-      // Fetch weather forecast data
       const res = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m,windspeed_10m,weathercode&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,weathercode&timezone=auto`
       );
@@ -201,7 +170,6 @@ export default function Dashboard() {
       setForecast({ hourly });
       setDaily(data.daily);
 
-      // Fetch air quality data
       const airRes = await fetch(
         `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY}`
       );
@@ -210,12 +178,7 @@ export default function Dashboard() {
 
       setAqi({
         main: {
-          aqi: Math.min(Math.max(1, airData.list[0].main.aqi), 5) as
-            | 1
-            | 2
-            | 3
-            | 4
-            | 5,
+          aqi: Math.min(Math.max(1, airData.list[0].main.aqi), 5) as 1 | 2 | 3 | 4 | 5,
         },
         components: {
           pm2_5: airData.list[0].components.pm2_5,
@@ -224,7 +187,6 @@ export default function Dashboard() {
         },
       });
 
-      // Fetch alerts
       const alertRes = await fetch(`/api/alert?lat=${lat}&lon=${lon}`);
       if (!alertRes.ok) {
         setAlerts(null);
@@ -233,23 +195,41 @@ export default function Dashboard() {
         setAlerts(alertData?.alert ? alertData : null);
       }
 
-      // Set alertsEnabled based on saved location if present, else default true
       const match = saved.find((loc) => loc.lat === lat && loc.lon === lon);
       if (match && typeof match.alertsEnabled === "boolean") {
         setAlertsEnabled(match.alertsEnabled);
       } else {
         setAlertsEnabled(true);
       }
-    } catch (err: any) {
-      console.error("Error:", err);
-      setError(err.message ?? "An unexpected error occurred.");
-      setAlertsEnabled(true); // fallback
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        console.error("Error:", err.message);
+        setError(err.message);
+      } else {
+        console.error("Unknown error:", err);
+        setError("An unexpected error occurred.");
+      }
+      setAlertsEnabled(true);
     } finally {
       setLoading(false);
     }
-  };
+  }, [saved]);
 
-  // Toggle alert enable/disable for current weather location
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          const cityName = await getCityNameFromCoords(latitude, longitude);
+          handleCitySelect({ name: cityName, lat: latitude, lon: longitude });
+        },
+        (error) => {
+          console.warn("Geolocation error:", error.message);
+        }
+      );
+    }
+  }, [handleCitySelect]);
+
   const handleAlertToggle = async () => {
     if (!user || !weather) return;
 
@@ -257,9 +237,7 @@ export default function Dashboard() {
     setAlertsEnabled(newValue);
     alert(`Weather alerts have been ${newValue ? "enabled" : "disabled"}.`);
 
-    const match = saved.find(
-      (loc) => loc.lat === weather.lat && loc.lon === weather.lon
-    );
+    const match = saved.find((loc) => loc.lat === weather.lat && loc.lon === weather.lon);
     if (match?.id) {
       try {
         await updateAlertsEnabled(user.uid, match.id, newValue);
@@ -277,9 +255,7 @@ export default function Dashboard() {
   return (
     <Layout>
       <div>
-        <h2 className="text-2xl font-semibold mb-4 text-white">
-          Search Weather
-        </h2>
+        <h2 className="text-2xl font-semibold mb-4 text-white">Search Weather</h2>
         <PlaceSearch onSelect={handleCitySelect} />
 
         {loading && <p className="text-white mt-4">Loading data...</p>}
@@ -304,7 +280,7 @@ export default function Dashboard() {
                       name: weather.name,
                       lat: weather.lat,
                       lon: weather.lon,
-                      alertsEnabled: alertsEnabled,
+                      alertsEnabled,
                     });
                     const updated = await getSavedLocations(user.uid);
                     setSaved(updated);
@@ -324,15 +300,12 @@ export default function Dashboard() {
                 }`}
                 onClick={handleAlertToggle}
               >
-                {alertsEnabled
-                  ? "Disable Weather Alerts"
-                  : "Enable Weather Alerts"}
+                {alertsEnabled ? "Disable Weather Alerts" : "Enable Weather Alerts"}
               </button>
             </div>
 
             {alertsEnabled && alerts && <AlertCard alert={alerts} />}
             {aqi && <AirQualityCard aqi={aqi} />}
-
             {forecast?.hourly && (
               <>
                 <HourlyForecast hourly={forecast.hourly} />
@@ -349,9 +322,7 @@ export default function Dashboard() {
         )}
 
         <section className="mt-10">
-          <h3 className="text-xl font-semibold text-white mb-2">
-            Saved Locations
-          </h3>
+          <h3 className="text-xl font-semibold text-white mb-2">Saved Locations</h3>
           {savedLoading ? (
             <p className="text-white">Loading saved locations...</p>
           ) : saved.length === 0 ? (
@@ -375,10 +346,8 @@ export default function Dashboard() {
                       onClick={async () => {
                         if (!user) return;
                         try {
-                          await deleteLocation(user.uid, loc.id);
-                          setSaved((prev) =>
-                            prev.filter((l) => l.id !== loc.id)
-                          );
+                          await deleteLocation(user.uid, loc.id!);
+                          setSaved((prev) => prev.filter((l) => l.id !== loc.id));
                         } catch (e) {
                           console.error("Failed to delete location", e);
                         }
