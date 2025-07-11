@@ -16,8 +16,8 @@ import {
   saveLocation,
   getSavedLocations,
   deleteLocation,
+  updateAlertsEnabled,
 } from "../lib/firestore";
-
 
 type HourlyWeather = {
   dt: string;
@@ -61,7 +61,9 @@ type SavedLocation = {
   name: string;
   lat: number;
   lon: number;
+  alertsEnabled?: boolean;
 };
+
 type DailyForecast = {
   time: string[];
   precipitation_probability_max: number[];
@@ -102,11 +104,13 @@ export default function Dashboard() {
   const [aqi, setAqi] = useState<AQIData | null>(null);
   const [alerts, setAlerts] = useState<WeatherAlert | null>(null);
   const [saved, setSaved] = useState<SavedLocation[]>([]);
+  const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [savedLoading, setSavedLoading] = useState(true);
+  const [daily, setDaily] = useState<DailyForecast | null>(null);
 
+  // Auth listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (usr) => {
       if (usr) {
@@ -118,6 +122,7 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
+  // Load saved locations
   useEffect(() => {
     if (user) {
       setSavedLoading(true);
@@ -130,6 +135,7 @@ export default function Dashboard() {
     }
   }, [user]);
 
+  // Get current location on mount
   useEffect(() => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -150,8 +156,8 @@ export default function Dashboard() {
       console.warn("Geolocation not supported by this browser.");
     }
   }, []);
-  const [daily, setDaily] = useState<DailyForecast | null>(null);
 
+  // Handle city/location selection
   const handleCitySelect = async ({ name, lat, lon }: SavedLocation) => {
     setLoading(true);
     setError(null);
@@ -163,11 +169,10 @@ export default function Dashboard() {
     }
 
     try {
-      // Fetch weather + forecast from Open-Meteo
+      // Fetch weather forecast data
       const res = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m,windspeed_10m,weathercode&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,weathercode&timezone=auto`
       );
-
       if (!res.ok) throw new Error("Failed to fetch weather data");
       const data = await res.json();
 
@@ -196,7 +201,7 @@ export default function Dashboard() {
       setForecast({ hourly });
       setDaily(data.daily);
 
-      // Fetch air quality from OpenWeather API
+      // Fetch air quality data
       const airRes = await fetch(
         `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY}`
       );
@@ -219,29 +224,53 @@ export default function Dashboard() {
         },
       });
 
+      // Fetch alerts
       const alertRes = await fetch(`/api/alert?lat=${lat}&lon=${lon}`);
       if (!alertRes.ok) {
-        const text = await alertRes.text();
-        throw new Error(
-          `Failed to fetch alert data: ${alertRes.status} ${alertRes.statusText} - ${text}`
-        );
-      }
-      const alertData = await alertRes.json();
-
-      if (alertData && alertData.alert) {
-        setAlerts(alertData); // directly matches updated WeatherAlert type
-      } else {
         setAlerts(null);
-      }
-    } catch (err: unknown) {
-      console.error("Error fetching forecast, AQI or alerts:", err);
-      if (err instanceof Error) {
-        setError(err.message);
       } else {
-        setError("An unexpected error occurred.");
+        const alertData = await alertRes.json();
+        setAlerts(alertData?.alert ? alertData : null);
       }
+
+      // Set alertsEnabled based on saved location if present, else default true
+      const match = saved.find((loc) => loc.lat === lat && loc.lon === lon);
+      if (match && typeof match.alertsEnabled === "boolean") {
+        setAlertsEnabled(match.alertsEnabled);
+      } else {
+        setAlertsEnabled(true);
+      }
+    } catch (err: any) {
+      console.error("Error:", err);
+      setError(err.message ?? "An unexpected error occurred.");
+      setAlertsEnabled(true); // fallback
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Toggle alert enable/disable for current weather location
+  const handleAlertToggle = async () => {
+    if (!user || !weather) return;
+
+    const newValue = !alertsEnabled;
+    setAlertsEnabled(newValue);
+    alert(`Weather alerts have been ${newValue ? "enabled" : "disabled"}.`);
+
+    const match = saved.find(
+      (loc) => loc.lat === weather.lat && loc.lon === weather.lon
+    );
+    if (match?.id) {
+      try {
+        await updateAlertsEnabled(user.uid, match.id, newValue);
+        setSaved((prev) =>
+          prev.map((loc) =>
+            loc.id === match.id ? { ...loc, alertsEnabled: newValue } : loc
+          )
+        );
+      } catch (err) {
+        console.error("Failed to update alertsEnabled:", err);
+      }
     }
   };
 
@@ -260,63 +289,54 @@ export default function Dashboard() {
           <div className="mt-6 space-y-8">
             <WeatherCard data={weather} />
 
-            <button
-              className="
-    px-5 py-3
-    bg-gradient-to-r from-purple-500 via-pink-500 to-red-500
-    text-white font-semibold
-    rounded-lg
-    shadow-lg
-    hover:shadow-2xl
-    transition
-    duration-300
-    ease-in-out
-    flex items-center space-x-2
-  "
-              onClick={async () => {
-                if (!user) return;
-                const alreadySaved = saved.some(
-                  (loc) => loc.lat === weather.lat && loc.lon === weather.lon
-                );
-                if (alreadySaved) return;
+            <div className="space-y-3">
+              <button
+                className="px-5 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 text-white font-semibold rounded-lg shadow-lg hover:shadow-2xl transition duration-300 ease-in-out flex items-center space-x-2"
+                onClick={async () => {
+                  if (!user || !weather) return;
+                  const alreadySaved = saved.some(
+                    (loc) => loc.lat === weather.lat && loc.lon === weather.lon
+                  );
+                  if (alreadySaved) return;
 
-                try {
-                  await saveLocation(user.uid, {
-                    name: weather.name,
-                    lat: weather.lat,
-                    lon: weather.lon,
-                  });
-                  const updated = await getSavedLocations(user.uid);
-                  setSaved(updated);
-                } catch (e) {
-                  console.error("Error saving location:", e);
-                }
-              }}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
+                  try {
+                    await saveLocation(user.uid, {
+                      name: weather.name,
+                      lat: weather.lat,
+                      lon: weather.lon,
+                      alertsEnabled: alertsEnabled,
+                    });
+                    const updated = await getSavedLocations(user.uid);
+                    setSaved(updated);
+                  } catch (e) {
+                    console.error("Error saving location:", e);
+                  }
+                }}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-              <span>Save Location</span>
-            </button>
-            {alerts && <AlertCard alert={alerts} />}
+                <span>Save Location</span>
+              </button>
+
+              <button
+                className={`px-5 py-2 rounded-md font-medium text-white transition ${
+                  alertsEnabled
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-gray-600 hover:bg-gray-700"
+                }`}
+                onClick={handleAlertToggle}
+              >
+                {alertsEnabled
+                  ? "Disable Weather Alerts"
+                  : "Enable Weather Alerts"}
+              </button>
+            </div>
+
+            {alertsEnabled && alerts && <AlertCard alert={alerts} />}
             {aqi && <AirQualityCard aqi={aqi} />}
 
             {forecast?.hourly && (
               <>
                 <HourlyForecast hourly={forecast.hourly} />
                 {daily && <SevenDayForecast daily={daily} />}
-
                 <TemperatureChart
                   hourly={forecast.hourly.map((h) => ({
                     ...h,
@@ -349,14 +369,13 @@ export default function Dashboard() {
                   >
                     {loc.name}
                   </button>
-
                   {loc.id && (
                     <button
                       className="ml-4 text-red-500 font-bold hover:text-red-700 transition"
                       onClick={async () => {
                         if (!user) return;
                         try {
-                          await deleteLocation(user.uid, loc.id!);
+                          await deleteLocation(user.uid, loc.id);
                           setSaved((prev) =>
                             prev.filter((l) => l.id !== loc.id)
                           );
